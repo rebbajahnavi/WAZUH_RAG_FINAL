@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     # Embedding model settings
     embedding_model_name: str = "BAAI/bge-large-en-v1.5"
     embedding_batch_size: int = 32
+    # "local" runs the model above inside this process (needs torch + ~2 GB RAM).
+    # "api" asks a hosted OpenAI-compatible embeddings endpoint instead (tiny memory use, ideal for Render free).
+    # With "api" the key/base are OPENAI_API_KEY / OPENAI_API_BASE (e.g. your Gemini key).
+    embedding_provider: str = "local"
+    embedding_api_model: str = "gemini-embedding-001"
+    embedding_dimensions: int = 768
     top_k_retrieval: int = 5
 
     # Dataset & Storage
