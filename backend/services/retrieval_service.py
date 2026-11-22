@@ -82,6 +82,23 @@ class RetrievalService:
                 collection_name=self.collection_name,
                 vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
             )
+        self.ensure_payload_indexes()
+
+    # Fields the app filters on. Qdrant Cloud refuses a filter on a field without an index
+    # (embedded/local mode does not), so these are created every time and are safe to repeat.
+    INDEXED_FIELDS = ("knowledge_source", "mitre_technique_id")
+
+    def ensure_payload_indexes(self):
+        from qdrant_client.models import PayloadSchemaType
+        for field in self.INDEXED_FIELDS:
+            try:
+                self.client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name=field,
+                    field_schema=PayloadSchemaType.KEYWORD,
+                )
+            except Exception as exc:  # already exists, or a mode that does not need it
+                logger.debug("Payload index for %s not created: %s", field, exc)
 
     def upsert_batch(self, records: List[Dict[str, Any]], embeddings: List[List[float]]):
         """Upserts a batch of chunked records with deterministic UUIDs."""
