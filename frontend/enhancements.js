@@ -270,13 +270,21 @@ let dsPoll = null;
 function fmtBytes(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; }
 
 function renderDatasetResult(r, dry) {
+  const dismissKey = `${r.added_or_updated}-${r.failed}-${r.seconds}`;
+  try { if (!dry && localStorage.getItem("serc-ds-dismissed") === dismissKey) return null; } catch (e) {}
   const bits = [`${r.to_add} to add`, `${r.to_update} to update`, `${r.unchanged} unchanged`, `${r.stale} stale`];
   if (!dry) { bits.splice(0, 3, `${r.added_or_updated} added or updated`, `${r.unchanged} unchanged`); bits.push(`${r.removed} removed`); if (r.failed) bits.push(`${r.failed} failed`); }
-  return h("div", { class: "notice " + (r.failed ? "" : "ok") },
+  const box = h("div", { class: "notice " + (r.failed ? "" : "ok") },
+    h("button", { class: "btn", type: "button", title: "Dismiss", "aria-label": "Dismiss", style: "float:right;padding:2px 10px;line-height:1.2",
+      onclick: () => { box.remove(); try { if (!dry) localStorage.setItem("serc-ds-dismissed", dismissKey); } catch (e) {} } }, "\u00d7"),
     h("strong", {}, dry ? "Preview (nothing was changed)" : "Sync finished"), h("div", {}, bits.join(" · ") + ` · ${r.seconds}s`),
     r.model_changed ? h("div", {}, "The embedding model changed, so every passage is re-embedded.") : null,
     ...(r.notes || []).map((n) => h("div", {}, n)),
     !dry && r.stale_left ? h("div", {}, `${r.stale_left} stale passage(s) were kept. Tick “Also remove stale passages” and sync again to delete them.`) : null);
+  if (!dry) {   // a finished-sync message clears itself after a few seconds (previews stay until you act)
+    setTimeout(() => { if (box.isConnected) { box.remove(); try { localStorage.setItem("serc-ds-dismissed", dismissKey); } catch (e) {} } }, 8000);
+  }
+  return box;
 }
 
 function renderDataset(st, extra) {
@@ -288,7 +296,7 @@ function renderDataset(st, extra) {
   const syncBtn = h("button", { class: "btn primary", type: "button", disabled: !isAdmin() || running, onclick: () => startSync() }, running ? "Synchronizing…" : "Synchronize now");
   const previewBtn = h("button", { class: "btn", type: "button", disabled: !isAdmin() || running, onclick: () => previewSync() }, "Preview changes");
   const pct = job.total ? Math.round((job.done / job.total) * 100) : 0;
-  body.replaceChildren(
+  const parts = [
     h("div", { class: "ds-status ds-" + cls }, h("span", { class: "ds-dot" }), h("div", {}, h("strong", {}, title), h("div", { class: "muted" }, sub))),
     st.issues && st.issues.length ? h("ul", { class: "notice-list" }, st.issues.map((i) => h("li", {}, i))) : null,
     h("div", { class: "kpis" },
@@ -308,7 +316,9 @@ function renderDataset(st, extra) {
     h("h3", {}, "Source files"),
     h("div", { class: "table-wrap" }, h("table", {}, h("thead", {}, h("tr", {}, ["File", "Feeds", "Size", "Modified (UTC)", "Status"].map((x) => h("th", {}, x)))),
       h("tbody", {}, (st.files || []).map((f) => h("tr", {}, h("td", {}, f.name), h("td", {}, SOURCE_LABEL[f.source] || f.source), h("td", { class: "nowrap" }, fmtBytes(f.size)), h("td", { class: "nowrap" }, f.modified || "–"),
-        h("td", {}, h("span", { class: "status " + (f.state === "unchanged" ? "st-ok" : f.state === "unknown" ? "st-review" : "st-warn") }, FILE_STATE[f.state] || f.state))))))));
+        h("td", {}, h("span", { class: "status " + (f.state === "unchanged" ? "st-ok" : f.state === "unknown" ? "st-review" : "st-warn") }, FILE_STATE[f.state] || f.state)))))))
+  ];
+  body.replaceChildren(...parts.filter(Boolean));
 }
 
 async function loadDataset(extra) {
