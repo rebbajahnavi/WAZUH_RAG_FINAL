@@ -168,7 +168,10 @@ class DatasetSync:
     def plan(self) -> Dict[str, Any]:
         manifest = self.load_manifest()
         known: Dict[str, str] = (manifest or {}).get("chunks", {})
-        model_changed = bool(manifest and manifest.get("embedding_model") and manifest["embedding_model"] != getattr(self.embedder, "model_name", ""))
+        record_differs = bool(manifest and manifest.get("embedding_model") and manifest["embedding_model"] != getattr(self.embedder, "model_name", ""))
+        # A different model name in the record does NOT mean the stored vectors are wrong (a redeploy can bring back an
+        # old record). Re-embedding everything can burn a free API quota in one click, so it only happens when asked for.
+        model_changed = record_differs and os.environ.get("SYNC_REEMBED_ON_MODEL_CHANGE", "").strip().lower() in ("1", "true", "yes")
 
         sources = self.loader(self.data_dir, quick=(self.scope == "quick"), include_rev2=self.include_rev2)
         parsed: Dict[str, Dict] = {}
@@ -199,6 +202,8 @@ class DatasetSync:
         stale = [cid for cid, src in stored.items() if cid not in parsed and src not in empty_sources]
         protected = sorted({src for cid, src in stored.items() if cid not in parsed and src in empty_sources})
         notes: List[str] = []
+        if record_differs and not model_changed:
+            notes.append("The sync record names a different embedding model, but the stored passages are kept. Only new or changed passages are embedded. Set SYNC_REEMBED_ON_MODEL_CHANGE=true to re-embed everything.")
         if empty_sources:
             notes.append("No passages were parsed for: " + ", ".join(empty_sources) + ". Their stored passages are kept. Check the files in data_sources/.")
         return {"parsed": parsed, "add": add, "update": update, "adopt": adopt, "unchanged": unchanged, "stale": stale,
